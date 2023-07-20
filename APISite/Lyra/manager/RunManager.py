@@ -1,60 +1,131 @@
 import json
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from rest_framework.parsers import JSONParser
+from rest_framework import status
 
-from ..models import SimulationRun, Simulation
+from ..models import Run, Simulation
 from . import AgentManager
+from ..serializers import RunSerializer, SimulationSerializer
+
 
 @csrf_exempt
-def startRun(request):
-	# If it exists already, start the simulation session instance (if not started). 
-	# Else create one, and then start it. 
-	
+def run(request, sim_id=None):
+	if request.method == "GET":
+		return getAllRuns(request, sim_id)
+
+@csrf_exempt
+def run_detail(request, run_id=None):
+	try: 
+		run = Run.objects.get(id=run_id) 
+	except Run.DoesNotExist: 
+		return JsonResponse({'message': 'The Run does not exist'}, status=status.HTTP_404_NOT_FOUND)
+
+	if request.method == 'GET': 
+		run_serializer = RunSerializer(run)
+		return JsonResponse(run_serializer.data) 
+
+
+def run_delete(request, data, sim_id=None):
+	run_id = data.get("run_id", None)
+	run = None
+	if run_id: 
+		try: 
+			run = Run.objects.get(id=run_id)
+		except Run.DoesNotExist:
+			return {'message': 'The Run does not exist', "status":status.HTTP_404_NOT_FOUND}
+
+		run.delete() 
+		return {'message': 'Run was deleted successfully!', "status":status.HTTP_204_NO_CONTENT}
+
+
+def run_edit(request, data, sim_id=None):
+	run_id = data.get("run_id", None)
+
+	if run_id: 
+		try: 
+			run = Run.objects.get(id=run_id)
+		except Run.DoesNotExist:
+			return {'message': 'The Run does not exist', "status":status.HTTP_404_NOT_FOUND}
+
+		# Not allowing changes in the simulation ID or number associated
+		data['simulation'] = run.simulation.id
+		data['number'] = run.number
+
+		run_serializer = RunSerializer(run, data=data) 
+		if run_serializer.is_valid(): 
+			run_serializer.save() 
+			return {"message": run_serializer.data, "status":status.HTTP_202_ACCEPTED}
+		return {"errors":run_serializer.errors, "status":status.HTTP_400_BAD_REQUEST}
+
+
+def getAllRuns(request, sim_id): 
 	response_data = {}
 
-	# If you're starting a new run, make sure the old one ends first. 
-	if request.session["run"]: 
-		request.session["run"] = None
+	sim = Simulation.objects.get(id=sim_id) 
+	if not sim: 
+		return JsonResponse({'message': 'Simulation %s does not exist.'%(sim_id)}, status=status.HTTP_404_NOT_FOUND)
+	
+	existing_runs = Run.objects.filter(simulation=sim)
+	
+	run_serializer = RunSerializer(existing_runs, many=True)
+	return JsonResponse(run_serializer.data, safe=False)
 
 
-	# Make sure the simulation run is associated with a simulation
-	if not request.session["simulation"]: 
-		response_data = {'success':False, "message": "Runs are associated with a simulation. Start simulation first!"}
-		return HttpResponse(json.dumps(response_data), content_type="application/json")
 
-	json_data = json.loads(request.body)
-	title = json_data.get('title', '')
-	version = json_data.get('version', '')
-	notes = json_data.get('notes', '')
+def run_add(request, data, sim_id=None):
+	# If a run has already been started; return the started run 
+	if request.session.get("run", ""): 
+		run = Run.objects.get(id=request.session["run"]) 
+		run_serializer = RunSerializer(run) 
+		return {'error': 'A run has already been started. To add a new one, please stop the current run first.', 'run':run_serializer.data, "status":status.HTTP_208_ALREADY_REPORTED}
+	
+	# Else create a new run
+	sim = Simulation.objects.get(id=sim_id) 
+	sim_serializer = SimulationSerializer(sim)
+	data['simulation'] = sim.id
+	data['number']= Run.objects.filter(simulation=sim).count()
 
-	existing_simulations = Simulation.objects.filter(id=request.session["simulation"], title=title, version=version)
+	run_serializer = RunSerializer(data=data)
 
-	if not existing_simulations: 
-		simulation = Simulation.newSim(title, version, notes)
-		request.session['simulation'] = simulation.id	
-
-	number = SimulationRun.objects.filter(simulation=simulation).count()
-
-	# Create a new simulation run
-	run = SimulationRun()
-	run.simulation = simulation
-	run.notes = notes
-	run.number = number
-	run.save()
-
-	request.session["run"] = run.id
-	response_data = {'success':True, 'run':run.getResponseData()}
-
-	agents = json_data.get('data',{}).get('agents',[])
-	if agents: 
-		response_data["agents"] = AgentManager.addAgentsToRun(agents, run)
-
-	return HttpResponse(json.dumps(response_data), content_type="application/json")
+	if run_serializer.is_valid():
+		run_serializer.save()
+		return {'message': 'Run was created successfully!', 'run':run_serializer.data, "status":status.HTTP_202_ACCEPTED}
+	return {"error":run_serializer.errors, "status":status.HTTP_400_BAD_REQUEST}
 
 
 @csrf_exempt
-def stopRun(request):
+def run_start(request, data, sim_id=None):
+	if request.session["run"]:
+		run = Run.objects.get(id=request.session["run"]) 
+		run_serializer = RunSerializer(run) 
+		return {'error': 'Please stop the current run, %s, first.'%(run_serializer.data["id"]), "status":status.HTTP_208_ALREADY_REPORTED}
+
+
+	run_id = data.get("run_id", None)
+	if not run_id: 
+		return {'error': "Missing run_id in request data.", "status":status.HTTP_404_NOT_FOUND}
+
+	try: 
+		run = Run.objects.get(id=run_id) 
+	except Run.DoesNotExist: 
+		return {'error': "The Run you're trying to start does not exist.", "status":status.HTTP_404_NOT_FOUND}
+
+	run_serializer = RunSerializer(run) 
+	request.session["run"] = run_serializer.data['id']
+	return {'message': 'Run was started successfully!', 'run':run_serializer.data, "status":status.HTTP_202_ACCEPTED}
+
+
+		
+@csrf_exempt
+def run_stop(request, data, sim_id=None):
+	try: 
+		run = Run.objects.get(id=request.session["run"]) 
+	except Run.DoesNotExist: 
+		return {'error': 'The run does not exist or has not been started.', "status":status.HTTP_404_NOT_FOUND}
+	
+	run_serializer = RunSerializer(run) 
 	request.session["run"] = None
-	response_data = {'success':True, "message": "Simulation Run stopped!"}
-	return HttpResponse(json.dumps(response_data), content_type="application/json")
+	return {'message': 'Run stopped successfully!', 'run':run_serializer.data, "status":status.HTTP_202_ACCEPTED}
+
 
