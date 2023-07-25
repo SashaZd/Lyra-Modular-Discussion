@@ -1,5 +1,5 @@
 from rest_framework import serializers 
-from Lyra.models import Simulation, Run, Agent, View, Discussion, Topic, ObjectOfDiscussion, RunAction, SimAction, ViewHistories
+from Lyra.models import Simulation, Run, Agent, View, Discussion, Topic, ObjectOfDiscussion, RunAction, SimAction
 
 
 
@@ -32,12 +32,6 @@ class ObjectOfDiscussionSerializer(serializers.ModelSerializer):
 class ViewSerializer(serializers.ModelSerializer):
 	class Meta:
 		model = View
-		fields = '__all__'
-
-
-class ViewHistoriesSerializer(serializers.ModelSerializer):
-	class Meta:
-		model = ViewHistories
 		fields = '__all__'
 
 		

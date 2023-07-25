@@ -46,3 +46,15 @@ def oods_delete(request, data, sim_id=None):
 	return {'output': 'Ood does not exist!', "status":status.HTTP_400_BAD_REQUEST}
 
 
+##############
+
+def get_ood_by_id(ood_id=None): 
+	ood = None
+	try: 
+		ood = ObjectOfDiscussion.objects.get(id=ood_id)
+	except ObjectOfDiscussion.DoesNotExist:
+		print("Could not find OOD:%s"%(ood_id))
+	return ood
+
+
+
