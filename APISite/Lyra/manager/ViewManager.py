@@ -113,7 +113,7 @@ def is_ood_view(view:View):
 		return True
 	else:
 		return False
-		
+
 
 def make_ood_view(ood_id:int, agent_id:int=None, save=False):
 	ood = ObjectOfDiscussion.objects.get(id=ood_id)
@@ -177,6 +177,7 @@ def view_accept(agent_id:int, other_view:View):
 def views_add(agent_id:int, views=[]):
 	"""
 	Adds views to an agent (internal method only)
+	
 	"""
 
 	view_outputs = []
