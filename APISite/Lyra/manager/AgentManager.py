@@ -99,7 +99,9 @@ def get_knowledge_on_topic(agent, topic):
 		if not ViewManager.make_topic_view(agent.id, topic.id): 
 			return "%s(id:%s):= Knows nothing about the Topic:%s. (Will accept OOD view at face value for now)"%(agent.name, agent.id, len(current_views), topic.title)
 		
-		topic_view = ViewManager.get_topic_view(agent.id, topic.id)[0]
+		topic_views = ViewManager.get_topic_views(agent.id, topic.id)
+		if topic_views: 
+			topic_view = topic_views[0]
 	return "%s(id:%s):= Current view influenced by %s Oods on Topic:%s \n(Mean View: attitude:%s | opinion:%s | unc:%s)"%(agent.name, agent.id, len(current_views), topic.title, topic_view.attitude, topic_view.opinion, topic_view.uncertainty)
 	
 

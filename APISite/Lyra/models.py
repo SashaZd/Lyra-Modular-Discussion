@@ -171,6 +171,11 @@ class View(models.Model):
 	ood = models.ForeignKey(ObjectOfDiscussion, on_delete=models.CASCADE, null=True, blank=True, default=None)
 	topic = models.ForeignKey(Topic, on_delete=models.CASCADE, null=True, blank=True, default=None)
 
+	def save(self, *args, **kwargs):
+		if not self.topic and self.ood:
+			self.topic = self.ood.topic
+		super(View, self).save(*args, **kwargs)
+
 
 	class Meta:
 		ordering = ('agent', 'topic', 'ood', '-id')
@@ -193,6 +198,36 @@ class View(models.Model):
 	def __hash__(self):
 		return self.id
 
+	def is_not_agent_view(self):
+		if not self.agent:
+			return True
+		return False
+
+
+	def describe_change_in_view(self, other):
+		# or (self.attitude == other.attitude and self.opinion == other.opinion):
+		if self == other:
+			return "%s's view was unchanged."%(self.agent.name)
+
+		changed = "%s changed their view: | "%(self.agent.name)
+		if self.attitude != other.attitude: 
+			changed += "attitude: **%s** | "%(other.attitude)
+		else: 
+			changed += "attitude: **%s** | "%(self.attitude)
+
+		if self.opinion != other.opinion: 
+			changed += "opinion: **%s** | "%(other.opinion)
+		else: 
+			changed += "opinion: **%s** | "%(self.opinion)
+
+		if self.uncertainty != other.uncertainty: 
+			changed += "uncertainty: **%s** | "%(other.uncertainty)
+		else: 
+			changed += "uncertainty: **%s** | "%(self.uncertainty)
+
+		return changed
+
+
 	def getResponseData(self):
 		response_data = {}
 		response_data["id"] = self.id
@@ -201,11 +236,15 @@ class View(models.Model):
 		response_data["uncertainty"] = self.uncertainty
 		response_data["public_compliance_thresh"] = self.public_compliance_thresh
 		response_data["private_acceptance_thresh"] = self.private_acceptance_thresh
-		response_data["agent"] = self.agent.id
-		response_data["topic"] = self.topic.id
+
+		if self.topic: 
+			response_data["topic"] = self.topic.id
 
 		if self.ood: 
 			response_data["ood"] = self.ood.id
+
+		if self.agent: 
+			response_data["agent"] = self.agent.id
 		return response_data
 		
 

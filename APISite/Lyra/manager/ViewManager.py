@@ -10,6 +10,23 @@ from ..serializers import ViewSerializer
 
 
 def get_views(request, data={}, run_id=None):
+	"""
+	Function: get_views
+	Summary: Get Views from this Run filtered by some criteria (agent_ids, view_ids, ood_ids, topic_ids, etc)
+	Examples: data = [
+	    {
+	        "act_type":"views",
+	        "data": {
+	            "topic_id": 1
+	        }
+	    }
+	]
+	Attributes: 
+		@param (request): Request Object
+		@param (data) default={}: Data passed, see example above
+		@param (run_id) default=None: Run ID pulled from the URL
+	Returns: InsertHere
+	"""
 	response_data = []
 	filtered_views = View.objects.all()
 
@@ -19,6 +36,7 @@ def get_views(request, data={}, run_id=None):
 		ood_id = data.get("ood_id", None)
 		topic_id = data.get("topic_id", None)
 
+		# If the views are filtered by a series of view_ids 
 		if view_ids:
 			view_ids = data.get("view_ids")
 			query = Q()
@@ -26,26 +44,28 @@ def get_views(request, data={}, run_id=None):
 				query = query | Q(id=_id)
 			filtered_views = filtered_views.filter(query)
 			
-		# Continue here sasha...
+		# If the views are filtered by a series of agent_ids
 		if agent_ids:
 			query = Q()
 			for _id in data.get("agent_ids"): 
 				query = query | Q(agent__id=_id)
 			filtered_views = filtered_views.filter(query)
 
+		# If the views are filtered by a specific OOD
 		if ood_id: 
 			query = Q()
 			query = query | Q(ood__id=ood_id)
 			filtered_views = filtered_views.filter(query)
 
+		# If the views are filtered by a specific topic
 		if topic_id: 
 			query = Q()
-			query = query | Q(ood__id=_id)
+			query = query | Q(topic__id=topic_id)
 			filtered_views = filtered_views.filter(query)
 			
+	# No filters, so just return all views from this run 
 	if run_id: 
 		filtered_views = filtered_views.filter(agent__run=run_id)
-		
 		
 	for eachView in filtered_views: 
 		response_data.append(eachView.getResponseData())
@@ -54,24 +74,58 @@ def get_views(request, data={}, run_id=None):
 	return response_data
 
 
-def add_views_to_agents(request, data={}, run_id=None): 
+def add_views_to_agents(request, data=[], run_id=None): 
 	"""
-	Allows multiple views to be added to multiple existing agents via the HTTP Request 
-	""" 
-
+	Function: add_views_to_agents
+	Summary: Allows multiple views to be added to multiple existing agents via the HTTP Request
+	Examples: data = [{
+		"act_type":"npcs",
+		"data": {
+			"agents": [
+			{
+				"agent_id":1,
+				"views":[
+					{ 
+						"ood": 1, "topic": 1, 
+						"attitude": 0.7, "opinion": 0.6, 
+						"uncertainty": 0.4, 
+						"public_compliance_thresh": 0.6, 
+						"private_acceptance_thresh": 0.7 
+					},
+					{ VIEW_DATA },
+					{ VIEW_DATA },
+					...
+				]
+			}
+		]}
+	}]
+	Attributes: 
+		@param (request): Request Object
+		@param (data) default={}:dict See example above for data object
+		@param (run_id) default=None: Run ID (from the URL)
+	Returns: output dict
+	"""
+	
 	response_data = {}
 	for eachAgent in data.get("agents", []):
 		agent_id = eachAgent.get("agent_id", None)
-		views = eachAgent.get("views", None)
-
 		try: 
 			agent = Agent.objects.get(id=agent_id)
 		except Agent.DoesNotExist:
 			return {'errors': 'The Agent, %s, does not exist'%(agent_id), "status":status.HTTP_404_NOT_FOUND}
 
+		views = eachAgent.get("views", None)
 		if agent: 
 			response_data[agent.name] = {}
-			response_data[agent.name]["views"] = views_add(agent.id, views)
+			response_data[agent.name]["views"] = []
+
+		for view in views_add(agent.id, views): 
+			# If the method responds with an error, it will be an error dictionary
+			# Else it will be a View object
+			if not isinstance(view, View):
+				response_data[agent.name]["views"].append(view)
+			else:
+				response_data[agent.name]["views"].append(view.getResponseData())
 	
 	return response_data
 		
@@ -80,75 +134,144 @@ def add_views_to_agents(request, data={}, run_id=None):
 ############## INTERNAL ########################
 
 def get_all_views_with_ood(agent_id, ood_id): 
+	"""
+	Function: get_all_views_with_ood
+	Summary: Returns all the Views with this particular OOD ID
+	Examples: get_all_views_with_ood(agent_id=1, ood_id=2) will return all views for Agent:1 on the ObjectOfDiscussion:2
+	Attributes: 
+		@param (agent_id):int
+		@param (ood_id):int
+	Returns: [View]
+	"""
 	return View.objects.filter(agent__id=agent_id, ood__id=ood_id)
 
-def get_topic_view(agent_id, topic_id): 
-	return View.objects.filter(agent__id=agent_id, topic__id=topic_id, ood__isnull=True)
 
-def make_topic_view(agent_id, topic_id):
+def get_topic_views(agent_id, topic_id): 
+	"""
+	Function: get_topic_views
+	Summary: Return the overall view for a topic
+	Examples: get_topic_views(agent_id:1, topic_id:1)
+	Attributes: 
+		@param (agent_id):int
+		@param (topic_id):int
+	Returns: [View]
+	"""
+	views = View.objects.filter(agent__id=agent_id, topic__id=topic_id, ood__isnull=True)
+	if views: 
+		return views
+	
+	# If there are no views on this topic, make one using any OODs that exist. 
+	return make_topic_view(agent_id, topic_id)
+	
+
+def make_topic_view(agent_id:int, topic_id:int) -> [View]:
+	"""
+	Function: make_topic_view
+	Summary: Make an overarching view for the topic using any views from child oods
+	Examples: make_topic_view(agent_id=1, topic_id=1)
+	Attributes: 
+		@param (agent_id):int
+		@param (topic_id):int
+	Returns: [View] 
+	"""
 	current_views = View.objects.filter(agent__id=agent_id, topic__id=topic_id, ood__isnull=False)
 
-	if current_views: 
-		mean_att = round(mean([view.attitude for view in current_views]), 2)
-		mean_op = round(mean([view.opinion for view in current_views]), 2)
-		mean_unc = round(mean([view.uncertainty for view in current_views]), 2)
-		topic_view = {
-			"opinion": mean_op,
-			"attitude": mean_att,
-			"uncertainty": mean_unc,
-			"topic": topic_id
-		}
-		# See if this already exists, else add it in 
-		if not View.objects.filter(opinion=mean_op, attitude=mean_att, uncertainty=mean_unc, topic__id=topic_id, ood__isnull=True):
-			_topic_view = views_add(agent_id, [topic_view])
+	if not current_views: 
+		return None
+	 
+	mean_att = round(mean([view.attitude for view in current_views]), 2)
+	mean_op = round(mean([view.opinion for view in current_views]), 2)
+	mean_unc = round(mean([view.uncertainty for view in current_views]), 2)
+	topic_view = {
+		"opinion": mean_op,
+		"attitude": mean_att,
+		"uncertainty": mean_unc,
+		"topic": topic_id
+	}
+	
+	# See if this already exists, else add it in 
+	# Don't need to filter, even if it's the same view as before, we should add it in. 
+	# if not View.objects.filter(opinion=mean_op, attitude=mean_att, uncertainty=mean_unc, topic__id=topic_id, ood__isnull=True):
+	_topic_view = add_view_data(agent_id, topic_view)
 
-	else:
-		return False
-
-	return True
+	return [_topic_view]
 
 
-def is_ood_view(view:View):
-	if not view.agent_id: 
+def is_agent_view(view:View) -> bool:
+	"""
+	Function: is_agent_view
+	Summary: Is this an agent view, or an OOD/Topic View
+	Examples: is_agent_view(view) --> returns True if it belongs to an agent, False if not 
+	Attributes: 
+		@param (view:View):View 
+	Returns: InsertHere
+	"""
+	if view and view.agent_id: 
 		return True
 	else:
 		return False
 
 
-def make_ood_view(ood_id:int, agent_id:int=None, save=False):
+def make_ood_view(ood_id:int)->[View]:
+	"""
+	Function: make_ood_view
+	Summary: Make a view for the OOD to convince NPCs during a discussion
+	Examples: make_ood_view(agent_id=1, ood_id=1)
+	Attributes: 
+		@param (agent_id):int
+		@param (topic_id):int
+	Returns: [View] 
+	"""
+	
 	ood = ObjectOfDiscussion.objects.get(id=ood_id)
-	view = View({ 
-		"attitude": ood.attitude,
-		"opinion": ood.opinion,
-		"uncertainty": 0.0,
-		"agent": agent_id, 
-		"ood": ood.id,
-		"topic": ood.topic.id
-	})
-
-	if save: 
-		view.save()
-
+	view = View()
+	view.opinion = ood.opinion
+	view.attitude = ood.attitude
+	view.uncertainty = 0.0
+	view.ood = ood
+	view.topic = ood.topic
 	return view
 	
 
+def view_accept_ood(agent_id:int, ood_id:int) -> None:
+	"""
+	Function: view_accept_ood
+	Summary: Make the agent accept the object_of_discussions point of view. 
+	Examples: view_accept_ood(agent_id:1, ood_id:1)
+	Attributes: 
+		@param (agent_id:int):Agent ID
+		@param (ood_id:int):OOD ID 
+	Returns: None
+	"""
+	view = make_ood_view(ood_id=ood_id)
+	agent = Agent.objects.get(id=agent_id)
+	view.agent = agent 
+	view.save()
 
-def view_accept_ood(agent_id:int, ood_id:int):
-	return make_ood_view(ood_id=ood_id, agent_id=agent_id, save=True)
 
-def find_discussion_view(agent_id, ood_id=None, topic_id=None):
+def find_discussion_view(agent_id:int, ood_id:int=None, topic_id:int=None) -> View:
+	"""
+	Function: find_discussion_view
+	Summary: Find the agent's latest view on a particular topic/ood for the discussion. 
+			If there's no view for the topic or the ood, accept the OOD's view
+	Attributes: 
+		@param (agent_id:int): Agent's ID for whom the view needs to be found
+		@param (ood_id:int) default=None: OOD's ID 
+		@param (topic_id:int) default=None: Topic's ID 
+	Returns: View
+	"""
+	
 	if ood_id: 
 		ood_view = get_all_views_with_ood(agent_id, ood_id)
 		if ood_view: 
 			return ood_view[0]
 
-	if topic_id: 
-		topic_view = get_topic_view(agent_id, topic_id)
-		if topic_view: 
-			return topic_view[0]
-
-		if make_topic_view(agent_id, topic_id): 
-			return get_topic_view(agent_id, topic_id)[0]
+		elif not topic_id: 
+			topic_id = ObjectOfDiscussion.objects.get(id=ood_id).topic.id
+		
+	topic_views = get_topic_views(agent_id, topic_id)
+	if topic_views: 
+		return topic_views[0]
 
 	# The agent knows nothing about this topic, so accepts the given information
 	# Can change how this works... maybe take into account prior information from older/related topics? 
@@ -159,53 +282,94 @@ def find_discussion_view(agent_id, ood_id=None, topic_id=None):
 	# Ex. see hurricane evacuation sentiment above
 	# return view_accept(agent_id, related_topic_view)
 
-	# For now, we assume the agent accepts the ood as given
+	# For now, we assume the agent accepts the ood as given since they have no knowledge to disprove it
 	return view_accept_ood(agent_id, ood_id)
 	
 	
-def view_accept(agent_id:int, other_view:View):
+def view_accept(agent_id:int, other_view:View) -> View:
+	"""
+	Function: view_accept
+	Summary: Accept a view, and add it to the database 
+	Attributes: 
+		@param (agent_id:int):Agent accepting the view 
+		@param (other_view:View):View to be accepted
+	Returns: InsertHere
+	"""
 	view_data = other_view.getResponseData()
 	view_data.pop("id")
-	view_data.pop("agent")
 	view_data["agent"] = agent_id
+	view = add_view_data(view_data=view_data)
+	return view
+	
+
+def add_view_data(view_data={})-> View: 
+	"""
+	Function: add_view_data
+	Summary: Adds a view to the dataase using a given view_dictionary (if valid)
+	Attributes: 
+		@param (view_data) default={}: View Dictionary
+	Returns: View
+	"""
 	view_serializer = ViewSerializer(data=view_data)
 	if view_serializer.is_valid():
 		view = view_serializer.save()
 		return view
-	
+	else:
+		return None
 
-def views_add(agent_id:int, views=[]):
-	"""
-	Adds views to an agent (internal method only)
-	
-	"""
 
+
+def add_views_to_agent(agent_id:int, views=[]):
+	"""
+	Function: add_views_to_agent
+	Summary: Adds view to an agent (internal method only)
+	Examples: InsertHere
+	Attributes: 
+		@param (agent_id:int):InsertHere
+		@param (views) default=[]: InsertHere
+	Returns: InsertHere
+	"""
 	view_outputs = []
 	for eachView in views: 
 		eachView["agent"] = agent_id
-		if not eachView.get("topic"): 
-			eachView["topic"] = ObjectOfDiscussion.objects.get(id=eachView["ood"]).topic.id
-
-		view_serializer = ViewSerializer(data=eachView)
-		if view_serializer.is_valid():
-			view = view_serializer.save()
-			view_outputs.append(view.getResponseData())
-		else:
+		view = add_view_data(eachView)
+		
+		if view: 
+			view_outputs.append(view)
+		else: 
 			view_outputs.append({"errors":view_serializer.errors, "status":status.HTTP_400_BAD_REQUEST})
-
 	return view_outputs
 
 
-def get_view_by_id(id:int=None):
+def get_view_by_id(id:int=None) -> View:
+	"""
+	Function: get_view_by_id
+	Summary: Get a specific view
+	Examples: get_view_by_id(id:int=None):
+	Attributes: 
+		@param (id:int) default=None: View ID for the view we want 
+	Returns: View
+	"""
 	try: 
 		view = View.objects.get(id=id)
 	except View.DoesNotExist: 
 		return {"errors":"View, %s, does not exist."%(id), "status":status.HTTP_400_BAD_REQUEST}
 
-	return view.getResponseData()
+	return view
 
 
-def get_initial_discussion_views(participants=[], ood_id=None, topic_id=None, latest=True): 
+def get_initial_discussion_views(participants=[int], ood_id:int=None, topic_id:int=None) -> [View]: 
+	"""
+	Function: get_initial_discussion_views
+	Summary: Get the latest views on the ood/topic for each participant. These views will be used to start the discussion
+	Examples: InsertHere
+	Attributes: 
+		@param (participants) default=[int]: list of agent IDs
+		@param (ood_id:int) default=None: Ood ID 
+		@param (topic_id:int) default=None: Topic ID
+	Returns:[View] List of Views 
+	"""
+	
 	if not participants: 
 		return {"errors":"Need participants.", "status":status.HTTP_400_BAD_REQUEST}
 
@@ -214,76 +378,8 @@ def get_initial_discussion_views(participants=[], ood_id=None, topic_id=None, la
 
 	views = []
 	for agent_id in participants: 
+		# Returns either a view (if the agent has any familiarity on the topic), or the OOD view 
 		agent_view = find_discussion_view(agent_id, ood_id, topic_id)
 		views.append(agent_view)
 				
 	return views
-
-
-# # Not sure if we're using this yet
-# def get_view_for_agent_ood_topic(agent_id=None, ood_id=None, topic_id=None, latest=True):
-# 	if not agent_id: 
-# 		return {"errors":"Need agent ID.", "status":status.HTTP_400_BAD_REQUEST}
-
-# 	if not ood_id and not topic_id: 
-# 		return {"errors":"Need either an ObjectOfDiscussion ID or Topic ID.", "status":status.HTTP_400_BAD_REQUEST}
-
-# 	views = View.objects.filter(agent__id=agent_id, ood__id=ood_id, topic__id=topic_id)
-	
-
-
-
-# def get_view_by_agent_ood_topic(agent_id=None, ood_id=None, topic_id=None, latest=True):
-# 	response_data = []
-# 	view_histories = None
-	
-# 	view_histories = ViewHistories.objects.filter(agent__id=agent_id, ood__id=ood_id, topic__id=topic_id)
-	
-# 	if not view_histories: 
-# 		return {'error': "The view(s) you are looking for don't exist", "status":status.HTTP_404_NOT_FOUND}
-
-# 	if view_histories: 
-# 		if latest: 
-# 			return ViewManager.get_view_by_id(view_histories[0].view.id)
-
-# 		for each_vh in view_histories: 
-# 			response_data.append(ViewManager.get_view_by_id(each_vh.view.id))
-
-# 	return response_data
-
-
-# def get_historical_views(request, data={}, run_id=None):
-# 	response_data = []
-# 	agent_id, ood_id, topic_id = data.get("agent_id", None), data.get("ood_id", None), data.get("topic_id", None)
-# 	latest = data.get("latest", True)
-
-# 	if not agent_id: 
-# 		return {"errors":"Need agent ID.", "status":status.HTTP_400_BAD_REQUEST}
-
-# 	if not ood_id and not topic_id: 	
-# 		return {"errors":"Need an ObjectOfDiscussion ID or Topic ID.", "status":status.HTTP_400_BAD_REQUEST}
-
-# 	elif not topic_id: 
-# 		topic_id = ObjectOfDiscussion.objects.get(id=ood_id).topic.id
-
-
-# 	response_data = get_view_by_agent_ood_topic(agent_id, ood_id, topic_id, latest)
-
-# 	return response_data
-
-
-# def add_viewHistory(agent_id, view_id, ood_id=None, topic_id=None):
-# 	if ood_id and not topic_id: 
-# 		topic_id = ObjectOfDiscussion.objects.get(id=ood_id).topic.id
-
-# 	viewhistory = {
-# 		"agent": agent_id,
-# 		"ood": ood_id,
-# 		"topic": topic_id,
-# 		"view": view_id
-# 	}
-
-# 	viewhistory_serializer = ViewHistoriesSerializer(data=viewhistory)
-# 	if viewhistory_serializer.is_valid():
-# 		view_history = viewhistory_serializer.save()
-# 	return view_history
