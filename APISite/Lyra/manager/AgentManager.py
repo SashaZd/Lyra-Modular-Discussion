@@ -105,7 +105,6 @@ def get_knowledge_on_topic(agent, topic):
 	return "%s(id:%s):= Current view influenced by %s Oods on Topic:%s \n(Mean View: attitude:%s | opinion:%s | unc:%s)"%(agent.name, agent.id, len(current_views), topic.title, topic_view.attitude, topic_view.opinion, topic_view.uncertainty)
 	
 
-
 def get_agent_by_ids(agent_ids=[]):
 	query = Q()
 	for _id in agent_ids:

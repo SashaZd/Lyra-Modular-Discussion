@@ -204,28 +204,12 @@ class View(models.Model):
 		return False
 
 
-	def describe_change_in_view(self, other):
+	def is_there_change(self, other):
 		# or (self.attitude == other.attitude and self.opinion == other.opinion):
-		if self == other:
-			return "%s's view was unchanged."%(self.agent.name)
-
-		changed = "%s changed their view: | "%(self.agent.name)
-		if self.attitude != other.attitude: 
-			changed += "attitude: **%s** | "%(other.attitude)
-		else: 
-			changed += "attitude: **%s** | "%(self.attitude)
-
-		if self.opinion != other.opinion: 
-			changed += "opinion: **%s** | "%(other.opinion)
-		else: 
-			changed += "opinion: **%s** | "%(self.opinion)
-
-		if self.uncertainty != other.uncertainty: 
-			changed += "uncertainty: **%s** | "%(other.uncertainty)
-		else: 
-			changed += "uncertainty: **%s** | "%(self.uncertainty)
-
-		return changed
+		if self.attitude != other.attitude and self.opinion != other.opinion and self.uncertainty != other.uncertainty: 
+			return True # "%s's view was unchanged."%(self.agent.name)
+		else:
+			return False
 
 
 	def getResponseData(self):

@@ -310,6 +310,7 @@ def add_view_data(view_data={})-> View:
 		@param (view_data) default={}: View Dictionary
 	Returns: View
 	"""
+	
 	view_serializer = ViewSerializer(data=view_data)
 	if view_serializer.is_valid():
 		view = view_serializer.save()
