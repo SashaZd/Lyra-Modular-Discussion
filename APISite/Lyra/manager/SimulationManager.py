@@ -1,8 +1,10 @@
 import json
+
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
-from rest_framework.parsers import JSONParser
+
 from rest_framework import status
+from rest_framework.parsers import JSONParser
 
 from ..models import Simulation
 from ..serializers import SimulationSerializer
@@ -33,7 +35,7 @@ def simulation_stop(request, sim_id=None):
 	except Simulation.DoesNotExist: 
 		return JsonResponse({'message': 'The simulation does not exist'}, status=status.HTTP_404_NOT_FOUND)
 
-	if request.session["simulation"] == None:
+	if request.session["simulation"] is None:
 		return JsonResponse({'message': 'The simulation has already been stopped. Please start the simulation before attempting to stop again.'}, status=status.HTTP_208_ALREADY_REPORTED)
 
 	sim_serializer = SimulationSerializer(sim)
@@ -87,8 +89,6 @@ def simulation(request):
 		return createSim(request)
 
 def getAllSims(request): 
-	response_data = {}
-
 	sims = Simulation.objects.all()
 	
 	# In case we're trying to get a specific simulation? 
@@ -115,6 +115,3 @@ def createSim(request):
 		sim_serializer.save()
 		return JsonResponse(sim_serializer.data, status=status.HTTP_201_CREATED) 
 	return JsonResponse(sim_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-		
-
-

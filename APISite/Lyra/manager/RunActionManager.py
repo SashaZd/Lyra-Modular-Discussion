@@ -1,19 +1,16 @@
-import json
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
+from django.http import JsonResponse
 from rest_framework.parsers import JSONParser
 from rest_framework import status
 
 from ..models import RunAction, Run 
-from . import AgentManager, TopicManager, ViewManager, DiscussionManager
+from . import AgentManager, ViewManager, DiscussionManager
 from ..serializers import RunActionSerializer
-
-
 
 @csrf_exempt
 def action_dispatcher(request, run_id=None):
 	try: 
-		run = Run.objects.get(id=run_id) 
+		_run = Run.objects.get(id=run_id) 
 	except Run.DoesNotExist: 
 		return JsonResponse({'errors': 'The Run, %s, does not exist'%(run_id)}, status=status.HTTP_404_NOT_FOUND)
 
@@ -40,7 +37,6 @@ def action_dispatcher(request, run_id=None):
 	actions = JSONParser().parse(request) 
 
 	for action in actions: 
-		print(action)
 		action["run"] = run_id
 		_outputs = dispatch[request.method][action.get("act_type")](request, action.get("data"), run_id)
 		action["output"] = _outputs

@@ -1,14 +1,11 @@
-import json
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
+from django.http import JsonResponse
 from rest_framework.parsers import JSONParser
 from rest_framework import status
 
 from ..models import SimAction, Simulation
-from . import RunManager, AgentManager, TopicManager, OODManager
+from . import RunManager, TopicManager, OODManager
 from ..serializers import SimActionSerializer
-
-
 
 @csrf_exempt
 def action_dispatcher(request, sim_id=None):
@@ -19,7 +16,6 @@ def action_dispatcher(request, sim_id=None):
 	if not request.session["simulation"]: 
 		return JsonResponse({'error': 'Start simulation before attempting an Action.'}, status=status.HTTP_404_NOT_FOUND)
 
-	outputs = []
 	dispatch = {
 		'POST':{
 			'run': RunManager.run_add,
@@ -69,7 +65,7 @@ def actions_list(request, data, sim_id):
 
 def actions_delete(request, data, sim_id=None):
 	action_id = data.get("action_id")
-	action = Action.objects.filter(simulation=sim_id, id=action_id)
+	action = SimAction.objects.filter(simulation=sim_id, id=action_id)
 	if action: 
 		action.delete() 
 		return {'output': 'Action was deleted successfully!', "status":status.HTTP_204_NO_CONTENT}

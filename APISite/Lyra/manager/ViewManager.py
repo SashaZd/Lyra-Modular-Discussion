@@ -1,11 +1,10 @@
-import json
-from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
-from rest_framework.parsers import JSONParser
-from rest_framework import status
-from statistics import mean, median, mode
+from statistics import mean
 
-from ..models import View, Agent, ObjectOfDiscussion
+from django.db.models import Q
+
+from rest_framework import status
+
+from ..models import Agent, ObjectOfDiscussion, View
 from ..serializers import ViewSerializer
 
 
@@ -14,12 +13,12 @@ def get_views(request, data={}, run_id=None):
 	Function: get_views
 	Summary: Get Views from this Run filtered by some criteria (agent_ids, view_ids, ood_ids, topic_ids, etc)
 	Examples: data = [
-	    {
-	        "act_type":"views",
-	        "data": {
-	            "topic_id": 1
-	        }
-	    }
+		{
+			"act_type":"views",
+			"data": {
+				"topic_id": 1
+			}
+		}
 	]
 	Attributes: 
 		@param (request): Request Object
@@ -119,7 +118,7 @@ def add_views_to_agents(request, data=[], run_id=None):
 			response_data[agent.name] = {}
 			response_data[agent.name]["views"] = []
 
-		for view in views_add(agent.id, views): 
+		for view in add_views_to_agent(agent.id, views): 
 			# If the method responds with an error, it will be an error dictionary
 			# Else it will be a View object
 			if not isinstance(view, View):
@@ -178,7 +177,7 @@ def make_topic_view(agent_id:int, topic_id:int) -> [View]:
 
 	if not current_views: 
 		return None
-	 
+	
 	mean_att = round(mean([view.attitude for view in current_views]), 2)
 	mean_op = round(mean([view.opinion for view in current_views]), 2)
 	mean_unc = round(mean([view.uncertainty for view in current_views]), 2)
@@ -186,13 +185,14 @@ def make_topic_view(agent_id:int, topic_id:int) -> [View]:
 		"opinion": mean_op,
 		"attitude": mean_att,
 		"uncertainty": mean_unc,
-		"topic": topic_id
+		"topic": topic_id, 
+		"agent": agent_id
 	}
 	
 	# See if this already exists, else add it in 
 	# Don't need to filter, even if it's the same view as before, we should add it in. 
 	# if not View.objects.filter(opinion=mean_op, attitude=mean_att, uncertainty=mean_unc, topic__id=topic_id, ood__isnull=True):
-	_topic_view = add_view_data(agent_id, topic_view)
+	_topic_view = add_view_data(topic_view)
 
 	return [_topic_view]
 
@@ -212,7 +212,7 @@ def is_agent_view(view:View) -> bool:
 		return False
 
 
-def make_ood_view(ood_id:int)->[View]:
+def make_ood_view(ood:ObjectOfDiscussion)->View:
 	"""
 	Function: make_ood_view
 	Summary: Make a view for the OOD to convince NPCs during a discussion
@@ -223,11 +223,11 @@ def make_ood_view(ood_id:int)->[View]:
 	Returns: [View] 
 	"""
 	
-	ood = ObjectOfDiscussion.objects.get(id=ood_id)
+	# ood = ObjectOfDiscussion.objects.get(id=ood_id)
 	view = View()
 	view.opinion = ood.opinion
 	view.attitude = ood.attitude
-	view.uncertainty = 0.0
+	view.uncertainty = 1.0
 	view.ood = ood
 	view.topic = ood.topic
 	return view
@@ -302,7 +302,7 @@ def view_accept(agent_id:int, other_view:View) -> View:
 	return view
 	
 
-def add_view_data(view_data={})-> View: 
+def add_view_data(view_data={}, save:bool=True)-> View: 
 	"""
 	Function: add_view_data
 	Summary: Adds a view to the dataase using a given view_dictionary (if valid)
@@ -313,12 +313,20 @@ def add_view_data(view_data={})-> View:
 	
 	view_serializer = ViewSerializer(data=view_data)
 	if view_serializer.is_valid():
-		view = view_serializer.save()
-		return view
+		if save: 
+			return view_serializer.save()
+		else:
+			view = View(**view_serializer.validated_data)
+			return view
+
 	else:
 		return None
 
-
+def is_there_change_view_data(view_data, other_data): 
+	if view_data["opinion"] == view_data["opinion"] and view_data["attitude"] == view_data["attitude"] and view_data["uncertainty"] == view_data["uncertainty"]: 
+		return True
+	else:
+		return False
 
 def add_views_to_agent(agent_id:int, views=[]):
 	"""
@@ -338,7 +346,7 @@ def add_views_to_agent(agent_id:int, views=[]):
 		if view: 
 			view_outputs.append(view)
 		else: 
-			view_outputs.append({"errors":view_serializer.errors, "status":status.HTTP_400_BAD_REQUEST})
+			view_outputs.append({"errors":view, "status":status.HTTP_400_BAD_REQUEST})
 	return view_outputs
 
 

@@ -1,9 +1,8 @@
+# Create your models here.
+import random
+
 from django.db import models
 from django.db.models import CheckConstraint, Q
-
-# Create your models here.
-import json, re, random
-
 
 # Table that contains all social simulations using Lyra
 class Simulation(models.Model):
@@ -23,7 +22,6 @@ class Simulation(models.Model):
 
 	def __cmp__(self, other):
 		return self.id - other.id
-
 
 	def getResponseData(self):
 		response_data = {}
@@ -172,25 +170,27 @@ class View(models.Model):
 	topic = models.ForeignKey(Topic, on_delete=models.CASCADE, null=True, blank=True, default=None)
 
 	def save(self, *args, **kwargs):
+		# If you have a OOD but not a Topic when you save, add the Topic automatically from the OOD 
 		if not self.topic and self.ood:
 			self.topic = self.ood.topic
+
 		super(View, self).save(*args, **kwargs)
 
 
 	class Meta:
-		ordering = ('agent', 'topic', 'ood', '-id')
+		ordering = ('agent', 'ood', 'topic', '-id')
 		constraints = [
-			models.CheckConstraint(
+			CheckConstraint(
 				check=Q(ood__isnull=False) | Q(topic__isnull=False),
 				name='view_ood_or_topic_not_null'
 			)
 		]
 
 	def __str__(self):
-		return "id: %s (attitude: %s | opinion: %s | uncertainty: %s)" % (self.id, round(self.attitude, 2), round(self.opinion, 2), round(self.uncertainty, 2))
+		return "id: %s (att: %s | op: %s | un: %s | ood:%s | topic:%s)" % (self.id, round(self.attitude, 2), round(self.opinion, 2), round(self.uncertainty, 2), self.ood.id, self.topic.id)
 
 	def __repr__(self):
-		return "id: %s (attitude: %s | opinion: %s | uncertainty: %s)" % (self.id, round(self.attitude, 2), round(self.opinion, 2), round(self.uncertainty, 2))
+		return "id: %s (att: %s | op: %s | un: %s | ood:%s | topic:%s)" % (self.id, round(self.attitude, 2), round(self.opinion, 2), round(self.uncertainty, 2), self.ood.id, self.topic.id)
 
 	def __cmp__(self, other):
 		return (self.attitude == other.attitude) and (self.opinion == other.opinion) and (self.uncertainty == other.uncertainty)
@@ -207,7 +207,7 @@ class View(models.Model):
 	def is_there_change(self, other):
 		# or (self.attitude == other.attitude and self.opinion == other.opinion):
 		if self.attitude != other.attitude and self.opinion != other.opinion and self.uncertainty != other.uncertainty: 
-			return True # "%s's view was unchanged."%(self.agent.name)
+			return True
 		else:
 			return False
 
@@ -296,12 +296,3 @@ class SimAction(models.Model):
 		response_data["data"] = self.data
 		response_data["output"] = self.output
 		return response_data
-
-
-
-
-
-
-
-
-

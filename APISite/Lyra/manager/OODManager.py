@@ -1,12 +1,7 @@
-import json
-# from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
-from rest_framework.parsers import JSONParser
 from rest_framework import status
 
-
-from ..models import Topic, ObjectOfDiscussion
-from ..serializers import TopicSerializer, ObjectOfDiscussionSerializer
+from ..models import ObjectOfDiscussion
+from ..serializers import ObjectOfDiscussionSerializer
 
 
 def oods_list(request, data, sim_id=None):
@@ -24,8 +19,6 @@ def oods_add(request, data, sim_id=None):
 	outputs = []
 
 	for ood in oods: 
-		topic_id = ood.get("topic", "")
-		
 		_serializer = ObjectOfDiscussionSerializer(data=ood)
 
 		if _serializer.is_valid():

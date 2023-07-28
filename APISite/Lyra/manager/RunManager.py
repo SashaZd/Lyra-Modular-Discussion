@@ -1,12 +1,9 @@
-import json
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
-from rest_framework.parsers import JSONParser
+from django.http import JsonResponse
 from rest_framework import status
 
 from ..models import Run, Simulation
-from . import AgentManager
-from ..serializers import RunSerializer, SimulationSerializer
+from ..serializers import RunSerializer
 
 
 @csrf_exempt
@@ -60,8 +57,6 @@ def run_edit(request, data, sim_id=None):
 
 
 def getAllRuns(request, sim_id): 
-	response_data = {}
-
 	sim = Simulation.objects.get(id=sim_id) 
 	if not sim: 
 		return JsonResponse({'message': 'Simulation %s does not exist.'%(sim_id)}, status=status.HTTP_404_NOT_FOUND)
@@ -82,7 +77,6 @@ def run_add(request, data, sim_id=None):
 	
 	# Else create a new run
 	sim = Simulation.objects.get(id=sim_id) 
-	sim_serializer = SimulationSerializer(sim)
 	data['simulation'] = sim.id
 	data['number']= Run.objects.filter(simulation=sim).count()
 

@@ -1,13 +1,7 @@
-import json
-# from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
-from rest_framework.parsers import JSONParser
 from rest_framework import status
-
 
 from ..models import Topic
 from ..serializers import TopicSerializer
-
 
 def topics_list(request, data, sim_id=None):
 	topics = Topic.objects.filter(simulation=sim_id)
