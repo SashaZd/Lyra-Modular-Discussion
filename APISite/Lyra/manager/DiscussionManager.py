@@ -13,50 +13,47 @@ from ..models import ObjectOfDiscussion, Topic, View
 from . import AgentManager, ViewManager
 
 
-def startDiscussion(request, data={}, run_id=None): 
+def startDiscussion(request, data={}, run_id:int=None): 
+	"""
+	Function: startDiscussion
+	Summary: Starts Discussion Amongst Participants. Discussions can only occur on ObjectOfDiscussions not Topics
+	Examples: InsertHere
+	Attributes: 
+		@param (request):Request Object
+		@param (data) default={}: {participants:[1,2], time_duration:5, ood:2}
+		@param (run_id) int=None: Run ID
+	Returns: InsertHere
+	"""
 	response_data = []
 	participant_ids = data.get('participants', [])
 	time_duration = data.get('time_duration', None)
 	ood_id = data.get('ood', None)
-	topic_id = data.get('topic', None)
 
-	if not participant_ids or not time_duration or not (ood_id or topic_id):
-		return {"errors":"Need at least one participant, time_duration > 1, and either an ObjectOfDiscussion ID or Topic ID.", "status":status.HTTP_400_BAD_REQUEST}
+	if not participant_ids or not time_duration or not ood_id:
+		return {"errors":"Need at least one participant, time_duration >= 1, and an ObjectOfDiscussion ID.", "status":status.HTTP_400_BAD_REQUEST}
   
 	try: 
 		ood = ObjectOfDiscussion.objects.get(id=ood_id)
-		topic = Topic.objects.get(id=topic_id)
-	except ObjectOfDiscussion.DoesNotExist: 
-		ood = None
-	except Topic.DoesNotExist: 
-		topic = None 
-
-	if not topic: 
-		if not ood: 
-			return {"errors":"Need valid ObjectOfDiscussion or valid Topic.", "status":status.HTTP_400_BAD_REQUEST}
 		topic = ood.topic
-
-	initial_views = ViewManager.get_initial_discussion_views(participants=participant_ids, ood_id=ood_id, topic_id=topic_id)
+	except ObjectOfDiscussion.DoesNotExist: 
+		return {"errors":"Need valid ObjectOfDiscussion.", "status":status.HTTP_400_BAD_REQUEST}
+	
+	
+	initial_views = ViewManager.get_initial_discussion_views(participants=participant_ids, ood=ood, topic=topic)
 	
 	_initial_views = []
 	for eachView in initial_views: 
 		_data = eachView.getResponseData()
-		_data.pop("id")
-		_view = ViewManager.add_view_data(_data, save=False)
-		_initial_views.append(_view)
+		_initial_views.append(_data)
 
 	discussion = LyraDiscussion(_initial_views, ood, topic)
 	final_views, journal = discussion.initiate_group_discussion(time_duration)
 
-	for index, view in enumerate(_initial_views): 
-		if view.agent: 
-			print(view.agent.id, ":", view, " ||| ", final_views[index].agent.id, ":", final_views[index])
-
 	response_data = {
-		"views": [view.getResponseData() for view in final_views],
+		"views": [view.getResponseData() for view in final_views if view],
 		"journal": journal
 	}
-
+	
 	return response_data
 
 
@@ -86,29 +83,23 @@ class LyraDiscussion(object):
 		self.topic = topic
 
 		# Add the article view to the discussion to convince people
-		ood_view = ViewManager.make_ood_view(self.ood)
+		ood_view = ViewManager.make_ood_view(self.ood).getResponseData()
+		ood_view["agent"] = None 
 		views.append(ood_view)
 
 		self.original_views = deepcopy(views)
 		self.newer_views = deepcopy(views)
 		
 		self.journal = []
-		print("Views: ", views)
-		print("Original: ", self.original_views)
-		print("Newer: ", self.newer_views)
 
 	def add_to_journal(self, message): 
 		self.journal.append(message)
 
 
 	def initiate_group_discussion(self, duration:int=5):
-		# participants = [person for person in self.group]
-
-		# self.discussion = Discussion(self.old_views, participants)
-		# self.discussion.article = self.article
 		self.duration = duration
 		self.add_to_journal("------- Discussion #%s Details --------" % (self.id))
-		self.add_to_journal("%d debate participants: #%s" % (len(self.newer_views), ', '.join([view.agent.name for view in self.original_views if view.agent])))
+		self.add_to_journal("%d debate participants: # %s" % (len(self.newer_views), ', '.join(["%s"%view["agent"] for view in self.original_views if view["agent"] != None])))
 		self.add_to_journal("Discussion on %s" % (self.topic))
 		self.add_to_journal("Debating merits of article, %s"%(self.ood.title))
 		self.add_to_journal("""The %s participants were given the article to read, and %s rounds to discuss the same."""% (len(self.newer_views), self.duration))
@@ -118,14 +109,18 @@ class LyraDiscussion(object):
 		for minute in range(self.duration):
 			self.add_to_journal("\n----- Round %s -----" % (minute+1))
 			self.discuss()
-			print("Newer: ", self.newer_views)
 
+		final_views = []
 		for view in self.newer_views: 
-			if view.is_not_agent_view(): 
-				continue
-			view.ood = self.ood 
-			view.topic = self.topic
-			view.save()
+			if view["agent"]: 
+				view.pop("id")
+				view["ood"] = self.ood.id
+				view["topic"] = self.topic.id
+				_new_view = ViewManager.add_view_data(view)
+
+				final_views.append(_new_view)
+
+		self.newer_views = final_views
 
 		return self.newer_views, self.journal
 
@@ -133,9 +128,9 @@ class LyraDiscussion(object):
 		self.add_to_journal("\n----- FAMILIARITY WITH THE ISSUE -------")
 		
 		for view in self.newer_views: 
-			if not view.is_not_agent_view(): 
-				self.add_to_journal("\nAgent:%s" % (view.agent.id))
-				self.add_to_journal(AgentManager.get_knowledge_on_topic(view.agent, self.topic))
+			if view["agent"]: 
+				self.add_to_journal("\nAgent:%s" % (view["agent"]))
+				self.add_to_journal(AgentManager.get_knowledge_on_topic(view["agent"], self.topic))
 		self.add_to_journal("------------------------------------\n")
 
 	
@@ -156,8 +151,8 @@ class LyraDiscussion(object):
 			
 			largest_group = max(self.view_grouping.values(), key=len) 
 
-			for index, view in enumerate(self.newer_views): 
-				if view.is_not_agent_view(): 
+			for view in self.newer_views: 
+				if not view["agent"]: 
 					newer_views.append(view)
 					continue
 				_new_view = self.public_opinion_formed(view, largest_group=largest_group)
@@ -165,12 +160,13 @@ class LyraDiscussion(object):
 				newer_views.append(_new_view)
 				if self.contemplation: 
 					break
+		
 		else:
 			if not self.contemplation: 
 				self.add_to_journal("Too many differing opinion groups present. Public Opinion not formed on the matter.")
 			
-			for index, view in enumerate(self.newer_views): 
-				if view.is_not_agent_view():
+			for view in self.newer_views: 
+				if not view["agent"]: 
 					newer_views.append(view)
 					continue
 				newer_views.append(self.no_public_opinion(view))
@@ -186,75 +182,74 @@ class LyraDiscussion(object):
 		# if not isinstance(agent_name, Person):
 		# 	return view
 
-		temp_view = view.getResponseData()
-		view_data = view.getResponseData()
-		view_data.pop("id")
+		temp_view = deepcopy(view)
+		view_data = deepcopy(view)
+		# view_data.pop("id")
 
 		mean_closest_group, closest_group = self.closest_group_to_view(view)
-		_mean_closest = sum([view.opinion for view in closest_group]) / len(closest_group)
+		_mean_closest = sum([view["opinion"] for view in closest_group]) / len(closest_group)
 
-		view_data["opinion"] = (_mean_closest + view.attitude) / 2
+		view_data["opinion"] = (_mean_closest + view["attitude"]) / 2
 		# max_group, min_group = max(closest_group), min(closest_group)
 		# view.unc = max([fabs(op - view.opinion) for op in closest_group])
-		view = ViewManager.add_view_data(view_data, save=False)
+		# view = ViewManager.add_view_data(view_data, save=False)
 		
 		if ViewManager.is_there_change_view_data(temp_view, view_data): 
-			self.template_nopubop_closer_journal(view.agent.name, mean_closest_group, True)
+			self.template_nopubop_closer_journal(view["agent"], mean_closest_group, True)
 		else:
-			self.template_nopubop_closer_journal(view.agent.name, mean_closest_group, False)
-		
-			
-		# self.did_view_change(temp_view, view, agent_name, show=False)
+			self.template_nopubop_closer_journal(view["agent"], mean_closest_group, False)
 
-		return view
+		return view_data
 
 
-	def public_opinion_formed(self, view, largest_group=None):
+	def public_opinion_formed(self, view:dict={}, largest_group:[]=None):
 		"""Public opinion is formed
 			Since pub_op is formed, any agents that retain their ideas risk rejection. 
 		"""
-		# if not isinstance(person, Person):
-		# 	return view
+		
 
 		# Agents with high levels of uncertainty will follow the largest groups opinions
 		# temp_view = view.getResponseData()
-		new_view_data = view.getResponseData()
-		new_view_data.pop("id")
+		new_view_data = deepcopy(view)
+		# new_view_data.pop("id")
 
-		if view.uncertainty > self.UNC_THR:
+		if view["uncertainty"] > self.UNC_THR:
 			if not self.contemplation: 
-				self.add_to_journal("%s looked for the group with the largest majority." % (view.agent.name))
+				self.add_to_journal("Agent: #%s looked for the group with the largest majority." % (view["agent"]))
 			
-			self.template_highunc_journal(view.agent.name)
-			new_view_data["opinion"] = round(mean([view.opinion for view in largest_group]), 2)
-			new_view_data["attitude"] = round(mean([view.opinion for view in largest_group]), 2)
-			# max_group, min_group = max(largest_group), min(largest_group)
-			# view.unc = max([fabs(op - view.opinion) for op in largest_group])
+			self.template_highunc_journal(view["agent"])
+			new_view_data["opinion"] = round(mean([eachView["opinion"] for eachView in largest_group]), 2)
+			new_view_data["attitude"] = round(mean([eachView["opinion"] for eachView in largest_group]), 2)
+			
+			# Uncertainty changes to the max difference between this agent's opinion, and any other person in this group 
+			# max_group, min_group = max([eachView["opinion"] for eachView in largest_group]), min([eachView["opinion"] for eachView largest_group])
+			if len(largest_group) >= 2: 
+				new_view_data["uncertainty"] = max([fabs(eachView["opinion"] - new_view_data["opinion"]) for eachView in largest_group])
 
 		else:
 			# Agent recognizes that there is a difference in it's own attitude and opinion
 			# Find the group that is closest to the opinion of this agent.
-			self.template_pubop_nsi_journal(view.agent.name)
+			self.template_pubop_nsi_journal(view["agent"])
 			mean_closest_group, closest_group  = self.closest_group_to_view(view)
 
 			if not self.contemplation:
-				self.add_to_journal("The closest group was the one with %s" % (self.template_name_group_members([view.agent.name for view in closest_group if view.agent], excludePerson=view.agent.name)))
+				self.add_to_journal("The closest group was the one with %s" % (self.template_name_group_members([eachView["agent"] for eachView in closest_group if eachView["agent"]], excludePerson=view["agent"])))
 
 
 			new_view_data = self.check_normative_social_influence(view=view, opinion_group=closest_group)
 			# Sasha continue here
 		
-		new_view = ViewManager.add_view_data(new_view_data, save=False)
-		return new_view
+		# new_view = ViewManager.add_view_data(new_view_data, save=False)
+		return new_view_data
 
 
-	def check_normative_social_influence(self, view: View=None, opinion_group=[]):
+	def check_normative_social_influence(self, view:dict={}, opinion_group=[]):
 		f_a = self.calculate_fa(opinion_group)
 		f_b = self.calculate_fb(opinion_group)
 		f_c = self.calculate_fc(opinion_group, view)
 
 		if not self.contemplation:
-			self.add_to_journal("%s thought about whether the group opinion was strong enough." % (view.agent.name))
+			self.add_to_journal("Agent: #%s thought about whether the group opinion was strong enough." % (view["agent"]))
 
 		# Public Opinion Strength (op_str)
 		# Pressure to conform to a group's opinion increases as op_str approaches 1
@@ -268,28 +263,28 @@ class LyraDiscussion(object):
 		return view_data
 
 	# Sasha continue here....
-	def internal_debate(self, view, opinion_group, op_str):
+	def internal_debate(self, view:dict={}, opinion_group:list=[], op_str:float=None):
 		"""Internal Debate
 			Decides whether the public opinion strength of this group is strong enough for the agent
 			to change either it's attitude or its opinion
 		""" 
 		# Default public threshold
-		view_data = view.getResponseData()
-		view_data.pop("id")
+		view_data = deepcopy(view)
+		# view_data.pop("id")
 
 		def_val_pub_thr = 0.6
 
 		# Using a public opinion spectrum we divide the public opinion spectrum into 3 categories: 
 		# using 2 thresholds: th1, th2
-		th1 = fabs(0.7 - view.uncertainty)
+		th1 = fabs(0.7 - view["uncertainty"])
 		th2 = def_val_pub_thr if th1 < def_val_pub_thr else th1	  		# 0.6
-		public_opinion_expressed = round(mean([view.opinion for view in opinion_group]), 2)
+		public_opinion_expressed = round(mean([eachView["opinion"] for eachView in opinion_group]), 2)
 
 		
 		if op_str < th1: 
 			# op_str is too weak for this agent to follow in terms of either attitude or opinion
 			# No change in agent attitude or opinion
-			self.template_pubop_nsi_nochange_journal(view.agent.name)
+			self.template_pubop_nsi_nochange_journal(view["agent"])
 			pass
 
 		elif op_str >= th1 and op_str < th2: 
@@ -309,19 +304,17 @@ class LyraDiscussion(object):
 			# 	print(agent_name.name, "CSI: ", op_str, th1, th2, view.unc)
 
 			if th1 < th2: 
-				self.template_pubop_nsi_change_highunc_journal(view.agent.name)
+				self.template_pubop_nsi_change_highunc_journal(view["agent"])
 			else:
-				self.template_pubop_nsi_change_lowunc_journal(view.agent.name)
-
-			# Check Wang paper for this circs.
-			if not self.contemplation and len(opinion_group) > 2: 
-				# max_group, min_group = max(opinion_group), min(opinion_group)
-				# view.unc = max([fabs(op - view.opinion) for op in opinion_group])				
-				# max(max_group - view.opinion, view.opinion - min_group)
-				raise Exception("CSI: CHECK WHAT's HAPPENING HERE: ", op_str, th1, th2, view.unc)
+				self.template_pubop_nsi_change_lowunc_journal(view["agent"])
 
 			view_data["opinion"] = public_opinion_expressed
 			view_data["attitude"] = public_opinion_expressed
+
+			# Check Wang paper for this circs.
+			if len(opinion_group) >= 2: 
+				view_data["uncertainty"] = max([fabs(eachView["opinion"] - view_data["opinion"]) for eachView in opinion_group])
+						
 
 		elif op_str >= th2: 
 			"""Public conformity
@@ -330,7 +323,7 @@ class LyraDiscussion(object):
 				However, they are aware that this doesn't change their inner attitudes
 				ie. opinion of the agent changes, but attitude does not
 			""" 
-			self.template_pubop_nsi_conform_forced_journal(view.agent.name)
+			self.template_pubop_nsi_conform_forced_journal(view["agent"])
 			view_data["opinion"] = public_opinion_expressed
 			# max_group, min_group = max(opinion_group), min(opinion_group)
 			# view.unc = max([fabs(op - view.opinion) for op in opinion_group])
@@ -353,30 +346,30 @@ class LyraDiscussion(object):
 				return size_proportion
 
 
-	def calculate_fb(self, opinion_group):
+	def calculate_fb(self, opinion_group:list=[]):
 		"""Opinion Strength based on: Group Opinion Homogenity"""
-		x = 1 - np.var([view.opinion for view in opinion_group])
+		x = 1 - np.var([view["opinion"] for view in opinion_group])
 		
 		# Homogenity of opinins / More variance -> less homogenity
 		f_b = 1 / (1 + exp(24 * x - 6))
 		return f_b
 
 
-	def calculate_fc(self, opinion_group, view):
+	def calculate_fc(self, opinion_group:list=[], view:dict={}):
 		"""Opinion Strength based on: Discrepancy between the agent's 
 		internal attitude and the mean public opinion in the group
 		"""
-		x = round(fabs(view.attitude - mean([view.opinion for view in opinion_group])), 2)
+		x = round(fabs(view["attitude"] - mean([eachView["opinion"] for eachView in opinion_group])), 2)
 		return (1 / (1 + exp(-12 * x + 6)))
 
 
-	def closest_group_to_view(self, view:View = None):
+	def closest_group_to_view(self, view:dict={}):
 		""" Returns the group with the opinion closest to this one
 		""" 
 
 		mean_closest, diff, closest_group = float("Inf"), float("Inf"), None
 		for _mean, group in self.view_grouping.items():
-			new_diff = abs(view.opinion - _mean)
+			new_diff = abs(view["opinion"] - _mean)
 			if new_diff < diff: 
 				mean_closest, diff, closest_group = _mean, new_diff, group
 
@@ -388,7 +381,7 @@ class LyraDiscussion(object):
 		num_clusters = len(self.view_grouping.keys())
 
 		for _mean, group in self.view_grouping.items():
-			if len(group) == 1 and ViewManager.is_agent_view(group[0]):
+			if len(group) == 1 and not group[0]["agent"]:
 				num_clusters -= 1
 		return num_clusters
 
@@ -396,25 +389,24 @@ class LyraDiscussion(object):
 	def find_best_grouping_of_opinions(self):
 		def small_grouping_opinions():
 
-			self.newer_views.sort(key=lambda x: x.opinion)
+			self.newer_views.sort(key=lambda x: x["opinion"])
 
 			maximumGap = 0
 			split = 0
 
 			for i in range(len(opinions) - 1):
-				if(maximumGap < (self.newer_views[i + 1].opinion - self.newer_views[i].opinion)):
-					maximumGap = self.newer_views[i + 1].opinion - self.newer_views[i].opinion
-					split = self.newer_views[i].opinion
-			groups = [[view for view in self.newer_views if view.opinion <= split], [view for view in self.newer_views if view.opinion > split]]
-			view_grouping = defaultdict(list)
+				if(maximumGap < (self.newer_views[i + 1]["opinion"] - self.newer_views[i]["opinion"])):
+					maximumGap = self.newer_views[i + 1]["opinion"] - self.newer_views[i]["opinion"]
+					split = self.newer_views[i]["opinion"]
+
+			groups = [[view for view in self.newer_views if view["opinion"] <= split], [view for view in self.newer_views if view["opinion"] > split]]
 			
+			view_grouping = defaultdict(list)
 			for group in groups:
-				if len(group) > 0: 
-					mean_group = round(mean([view.opinion for view in group]), 2) 
-					view_grouping[mean_group] = group
+				mean_group = round(mean([view["opinion"] for view in group]), 2) 
+				view_grouping[mean_group] = group
 					
 			return view_grouping
-
 
 		def get_classified_ops(zone_indices, participants=False):
 			if not participants: 
@@ -428,11 +420,10 @@ class LyraDiscussion(object):
 				opinion_grouping = defaultdict(list)
 				
 				for zone in views_sort: 
-					mean_op = round(mean([view.opinion for view in zone]), 2)
+					mean_op = round(mean([view["opinion"] for view in zone]), 2)
 					opinion_grouping[mean_op] = zone
 					
 				return opinion_grouping 
-
 
 		def goodness_of_variance_fit(nclasses):
 
@@ -455,7 +446,7 @@ class LyraDiscussion(object):
 			sdam = np.sum((opinions - np.mean(opinions)) ** 2)
 
 			# sum of squared deviations of class means
-			opinion_grouping = [np.array([view.opinion for view in view_group]) for view_group in array_sort]	
+			opinion_grouping = [np.array([view["opinion"] for view in view_group]) for view_group in array_sort]	
 			sdcm = sum([np.sum((classified - classified.mean()) ** 2) for classified in opinion_grouping])
 
 			# goodness of variance fit
@@ -472,7 +463,7 @@ class LyraDiscussion(object):
 
 		gvf = 0.0
 		nclasses = 2
-		opinions = [view.opinion for view in self.newer_views]
+		opinions = [view["opinion"] for view in self.newer_views]
 
 		if len(opinions) <= 3 or len(np.unique(opinions))<2:
 			return small_grouping_opinions()
@@ -481,8 +472,6 @@ class LyraDiscussion(object):
 		# Goodness of fit set to 0.9
 		best_gvf = 0.0
 		best_zone_indices = None
-
-		print("Opinions: ", len(opinions), opinions, nclasses)
 
 		while nclasses < len(opinions) and gvf < 0.9:
 			gvf, zone_indices = goodness_of_variance_fit(nclasses)
@@ -551,7 +540,7 @@ class LyraDiscussion(object):
 				# then the agent tries to reconcile the difference between their internal attitudes and opinions
 				self.add_to_journal(random.choice(LyraDiscussion.template_nopubop_closer_group_alone) % (agent_name))
 			else:
-				self.add_to_journal(random.choice(LyraDiscussion.template_nopubop_closer_group) % (agent_name, self.template_name_group_members([view.agent.name for view in views], agent_name)))
+				self.add_to_journal(random.choice(LyraDiscussion.template_nopubop_closer_group) % (agent_name, self.template_name_group_members([view["agent"] for view in views], agent_name)))
 		else:
 			self.add_to_journal(random.choice(LyraDiscussion.template_nopubop_closer_noChange) % (agent_name))
 

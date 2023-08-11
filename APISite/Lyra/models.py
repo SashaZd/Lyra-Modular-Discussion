@@ -174,7 +174,21 @@ class View(models.Model):
 		if not self.topic and self.ood:
 			self.topic = self.ood.topic
 
+		self.opinion = round(self.opinion, 2)
+		self.attitude = round(self.attitude, 2)
+		self.uncertainty = round(self.uncertainty, 2)
+		self.public_compliance_thresh = round(self.public_compliance_thresh, 2)
+		self.private_acceptance_thresh = round(self.private_acceptance_thresh, 2)
+
+		# Only save new views... if the view hasn't changed, don't save it.
+		existing_views = View.objects.filter(agent=self.agent, ood=self.ood, topic=self.topic)
+		if existing_views: 
+			view = existing_views[0]
+			if view.attitude == self.attitude and view.opinion == self.opinion and view.uncertainty == self.uncertainty: 
+				return view
+
 		super(View, self).save(*args, **kwargs)
+		return self
 
 
 	class Meta:
@@ -187,10 +201,10 @@ class View(models.Model):
 		]
 
 	def __str__(self):
-		return "id: %s (att: %s | op: %s | un: %s | ood:%s | topic:%s)" % (self.id, round(self.attitude, 2), round(self.opinion, 2), round(self.uncertainty, 2), self.ood.id, self.topic.id)
+		return "id: %s (att: %s | op: %s | un: %s | ood:%s | topic:%s)" % (self.id, round(self.attitude, 2), round(self.opinion, 2), round(self.uncertainty, 2), self.ood, self.topic)
 
 	def __repr__(self):
-		return "id: %s (att: %s | op: %s | un: %s | ood:%s | topic:%s)" % (self.id, round(self.attitude, 2), round(self.opinion, 2), round(self.uncertainty, 2), self.ood.id, self.topic.id)
+		return "id: %s (att: %s | op: %s | un: %s | ood:%s | topic:%s)" % (self.id, round(self.attitude, 2), round(self.opinion, 2), round(self.uncertainty, 2), self.ood, self.topic)
 
 	def __cmp__(self, other):
 		return (self.attitude == other.attitude) and (self.opinion == other.opinion) and (self.uncertainty == other.uncertainty)
@@ -203,6 +217,7 @@ class View(models.Model):
 			return True
 		return False
 
+	
 
 	def is_there_change(self, other):
 		# or (self.attitude == other.attitude and self.opinion == other.opinion):

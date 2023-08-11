@@ -4,7 +4,7 @@ from django.db.models import Q
 
 from rest_framework import status
 
-from ..models import Agent, ObjectOfDiscussion, View
+from ..models import Agent, ObjectOfDiscussion, View, Topic
 from ..serializers import ViewSerializer
 
 
@@ -142,10 +142,11 @@ def get_all_views_with_ood(agent_id, ood_id):
 		@param (ood_id):int
 	Returns: [View]
 	"""
-	return View.objects.filter(agent__id=agent_id, ood__id=ood_id)
+	views = View.objects.filter(agent__id=agent_id, ood__id=ood_id) 
+	return views
 
 
-def get_topic_views(agent_id, topic_id): 
+def get_topic_views(agent_id, topic:Topic) -> [View]: 
 	"""
 	Function: get_topic_views
 	Summary: Return the overall view for a topic
@@ -155,15 +156,16 @@ def get_topic_views(agent_id, topic_id):
 		@param (topic_id):int
 	Returns: [View]
 	"""
-	views = View.objects.filter(agent__id=agent_id, topic__id=topic_id, ood__isnull=True)
+	
+	views = View.objects.filter(agent__id=agent_id, topic=topic, ood__isnull=True)
 	if views: 
 		return views
 	
 	# If there are no views on this topic, make one using any OODs that exist. 
-	return make_topic_view(agent_id, topic_id)
+	return [make_topic_view(agent_id, topic)]
 	
 
-def make_topic_view(agent_id:int, topic_id:int) -> [View]:
+def make_topic_view(agent_id:int, topic:Topic) -> [View]:
 	"""
 	Function: make_topic_view
 	Summary: Make an overarching view for the topic using any views from child oods
@@ -173,7 +175,7 @@ def make_topic_view(agent_id:int, topic_id:int) -> [View]:
 		@param (topic_id):int
 	Returns: [View] 
 	"""
-	current_views = View.objects.filter(agent__id=agent_id, topic__id=topic_id, ood__isnull=False)
+	current_views = View.objects.filter(agent__id=agent_id, topic=topic, ood__isnull=False)
 
 	if not current_views: 
 		return None
@@ -185,7 +187,7 @@ def make_topic_view(agent_id:int, topic_id:int) -> [View]:
 		"opinion": mean_op,
 		"attitude": mean_att,
 		"uncertainty": mean_unc,
-		"topic": topic_id, 
+		"topic": topic.id, 
 		"agent": agent_id
 	}
 	
@@ -194,7 +196,7 @@ def make_topic_view(agent_id:int, topic_id:int) -> [View]:
 	# if not View.objects.filter(opinion=mean_op, attitude=mean_att, uncertainty=mean_unc, topic__id=topic_id, ood__isnull=True):
 	_topic_view = add_view_data(topic_view)
 
-	return [_topic_view]
+	return _topic_view
 
 
 def is_agent_view(view:View) -> bool:
@@ -227,13 +229,13 @@ def make_ood_view(ood:ObjectOfDiscussion)->View:
 	view = View()
 	view.opinion = ood.opinion
 	view.attitude = ood.attitude
-	view.uncertainty = 1.0
+	view.uncertainty = 0.0
 	view.ood = ood
 	view.topic = ood.topic
 	return view
 	
 
-def view_accept_ood(agent_id:int, ood_id:int) -> None:
+def view_accept_ood(agent_id:int, ood:ObjectOfDiscussion) -> View:
 	"""
 	Function: view_accept_ood
 	Summary: Make the agent accept the object_of_discussions point of view. 
@@ -241,38 +243,52 @@ def view_accept_ood(agent_id:int, ood_id:int) -> None:
 	Attributes: 
 		@param (agent_id:int):Agent ID
 		@param (ood_id:int):OOD ID 
-	Returns: None
+	Returns: View
 	"""
-	view = make_ood_view(ood_id=ood_id)
-	agent = Agent.objects.get(id=agent_id)
-	view.agent = agent 
+	
+	try: 
+		agent = Agent.objects.get(id=agent_id)
+	except Agent.DoesNotExist: 
+		agent = None 
+		raise Exception("view_accept_ood(): agent_id, %s, does not exist."%(agent_id))	
+
+	view = View()
+	view.opinion = ood.opinion
+	view.attitude = ood.attitude
+	view.uncertainty = 0.5
+	view.ood = ood
+	view.topic = ood.topic
+	view.agent = agent
 	view.save()
 
+	return view
+		
 
-def find_discussion_view(agent_id:int, ood_id:int=None, topic_id:int=None) -> View:
+
+def find_discussion_view(agent_id:int, ood:ObjectOfDiscussion=None, topic:Topic=None) -> View:
 	"""
 	Function: find_discussion_view
 	Summary: Find the agent's latest view on a particular topic/ood for the discussion. 
 			If there's no view for the topic or the ood, accept the OOD's view
 	Attributes: 
 		@param (agent_id:int): Agent's ID for whom the view needs to be found
-		@param (ood_id:int) default=None: OOD's ID 
-		@param (topic_id:int) default=None: Topic's ID 
+		@param (ood:ObjectOfDiscussion) default=None: OOD's ID 
+		@param (topic:Topic) default=None: Topic's ID 
 	Returns: View
 	"""
 	
-	if ood_id: 
-		ood_view = get_all_views_with_ood(agent_id, ood_id)
-		if ood_view: 
-			return ood_view[0]
+	if ood: 
+		ood_views = View.objects.filter(ood=ood, agent__id=agent_id)
+		if ood_views and ood_views[0]: 
+			return ood_views[0]
 
-		elif not topic_id: 
-			topic_id = ObjectOfDiscussion.objects.get(id=ood_id).topic.id
 		
-	topic_views = get_topic_views(agent_id, topic_id)
-	if topic_views: 
-		return topic_views[0]
-
+	if topic: 	
+		topic_views = get_topic_views(agent_id, topic.id)
+		if topic_views and topic_views[0]: 
+			return topic_views[0]
+		
+		
 	# The agent knows nothing about this topic, so accepts the given information
 	# Can change how this works... maybe take into account prior information from older/related topics? 
 	# For instance, evacuation sentiments from older hurricanes may affect a new hurricane's initial evacuation opinions
@@ -283,7 +299,7 @@ def find_discussion_view(agent_id:int, ood_id:int=None, topic_id:int=None) -> Vi
 	# return view_accept(agent_id, related_topic_view)
 
 	# For now, we assume the agent accepts the ood as given since they have no knowledge to disprove it
-	return view_accept_ood(agent_id, ood_id)
+	return view_accept_ood(agent_id, ood)
 	
 	
 def view_accept(agent_id:int, other_view:View) -> View:
@@ -367,7 +383,7 @@ def get_view_by_id(id:int=None) -> View:
 	return view
 
 
-def get_initial_discussion_views(participants=[int], ood_id:int=None, topic_id:int=None) -> [View]: 
+def get_initial_discussion_views(participants=[int], ood:ObjectOfDiscussion=None, topic:Topic=None) -> [View]: 
 	"""
 	Function: get_initial_discussion_views
 	Summary: Get the latest views on the ood/topic for each participant. These views will be used to start the discussion
@@ -379,16 +395,16 @@ def get_initial_discussion_views(participants=[int], ood_id:int=None, topic_id:i
 	Returns:[View] List of Views 
 	"""
 	
-	if not participants: 
-		return {"errors":"Need participants.", "status":status.HTTP_400_BAD_REQUEST}
+	# if not participants: 
+	# 	return {"errors":"Need participants.", "status":status.HTTP_400_BAD_REQUEST}
 
-	if not ood_id and not topic_id: 
-		return {"errors":"Need either an ObjectOfDiscussion ID or Topic ID.", "status":status.HTTP_400_BAD_REQUEST}
+	# if not ood_id and not topic_id: 
+	# 	return {"errors":"Need either an ObjectOfDiscussion ID or Topic ID.", "status":status.HTTP_400_BAD_REQUEST}
 
 	views = []
 	for agent_id in participants: 
 		# Returns either a view (if the agent has any familiarity on the topic), or the OOD view 
-		agent_view = find_discussion_view(agent_id, ood_id, topic_id)
+		agent_view = find_discussion_view(agent_id, ood, topic)
 		views.append(agent_view)
 				
 	return views

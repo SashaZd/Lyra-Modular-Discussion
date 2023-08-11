@@ -2,7 +2,7 @@ from django.db.models import Q
 
 from rest_framework import status
 
-from ..models import Agent, View
+from ..models import Agent, View, Topic
 from ..serializers import AgentSerializer
 from . import ViewManager
 
@@ -88,21 +88,31 @@ def get_npcs(request, data={}, run_id=None):
 
 ###########################
 
-def get_knowledge_on_topic(agent, topic):
-	current_views = View.objects.filter(agent=agent, topic=topic, ood__isnull=False)
-	topic_views = View.objects.filter(agent=agent, topic=topic, ood__isnull=True)
+def get_knowledge_on_topic(agent_id:int, topic:Topic) -> str:
+	num_oods = View.objects.filter(agent__id=agent_id, topic=topic, ood__isnull=False).values_list('ood', flat=True).distinct().count()
+	topic_views = ViewManager.get_topic_views(agent_id, topic)
 
-	if topic_views:
-		topic_view = topic_views[0]
+	journal_str = "Agent #%s := Current view influenced by %s Oods on Topic:%s"%(agent_id, num_oods, topic.title)  # noqa: E501
 
-	else:
-		if not ViewManager.make_topic_view(agent.id, topic.id): 
-			return "%s(id:%s):= Knows nothing about the Topic:%s. (Will accept OOD view at face value for now)"%(agent.name, agent.id, topic.title)
+	if topic_views: 
+		journal_str += "(Mean View: attitude:%s | opinion:%s | unc:%s)"%(topic_views[0].attitude, topic_views[0].opinion, topic_views[0].uncertainty)
+
+	return journal_str
+
+	# current_views = View.objects.filter(agent=agent, topic=topic, ood__isnull=False)
+	# topic_views = View.objects.filter(agent=agent, topic=topic, ood__isnull=True)
+
+	# if topic_views:
+	# 	topic_view = topic_views[0]
+
+	# else:
+	# 	if not ViewManager.make_topic_view(agent.id, topic.id): 
+	# 		return "%s(id:%s):= Knows nothing about the Topic:%s. (Will accept OOD view at face value for now)"%(agent.name, agent.id, topic.title)
 		
-		topic_views = ViewManager.get_topic_views(agent.id, topic.id)
-		if topic_views: 
-			topic_view = topic_views[0]
-	return "%s(id:%s):= Current view influenced by %s Oods on Topic:%s \n(Mean View: attitude:%s | opinion:%s | unc:%s)"%(agent.name, agent.id, len(current_views), topic.title, topic_view.attitude, topic_view.opinion, topic_view.uncertainty)  # noqa: E501
+	# 	topic_views = ViewManager.get_topic_views(agent.id, topic.id)
+	# 	if topic_views: 
+	# 		topic_view = topic_views[0]
+	# return "%s(id:%s):= Current view influenced by %s Oods on Topic:%s \n(Mean View: attitude:%s | opinion:%s | unc:%s)"%(agent.name, agent.id, len(current_views), topic.title, topic_view.attitude, topic_view.opinion, topic_view.uncertainty)  # noqa: E501
 	
 
 def get_agent_by_ids(agent_ids=[], run_id:int=None):
