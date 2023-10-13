@@ -3,7 +3,8 @@
 		"_postman_id": "a6fe0a05-891f-4bba-8d2b-c87dfdcded41",
 		"name": "Lyra",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "3815822"
+		"_exporter_id": "3815822",
+		"_collection_link": "https://speeding-resonance-337409.postman.co/workspace/New-Team-Workspace~0bfd1a1e-e62c-436f-b605-325a87666794/collection/3815822-a6fe0a05-891f-4bba-8d2b-c87dfdcded41?action=share&source=collection_link&creator=3815822"
 	},
 	"item": [
 		{
@@ -95,7 +96,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n    \"act_type\":\"oods\",\n    \"data\": {\n        \"oods\":[\n            {\"title\":\"Gun Article 1\", \"topic\": 1},\n            {\"title\":\"Another Article 2\", \"topic\": 2}\n        ]    \n    }\n}",
+									"raw": "{\n    \"act_type\":\"oods\",\n    \"data\": {\n        \"oods\":[\n            {\"title\":\"Gun Article 1\", \"topic\": 1},\n            {\"title\":\"Another Article 2\", \"topic\": 2},\n            {\"title\":\"Article 3\", \"topic\": 2}\n        ]    \n    }\n}",
 									"options": {
 										"raw": {
 											"language": "json"
@@ -883,7 +884,7 @@
 								"header": [],
 								"body": {
 									"mode": "raw",
-									"raw": "[\n    {\n        \"act_type\":\"views\",\n        \"data\": {\n            \"agent_ids\": [54]\n        }\n    }\n]",
+									"raw": "[\n    {\n        \"act_type\":\"views\",\n        \"data\": {\n            \"agent_ids\": [1]\n        }\n    }\n]",
 									"options": {
 										"raw": {
 											"language": "json"
@@ -992,6 +993,84 @@
 							"header": null,
 							"cookie": [],
 							"body": null
+						},
+						{
+							"name": "GET Views By Ood ID",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "[\n    {\n        \"act_type\":\"views\",\n        \"data\": {\n            \"ood_id\": 1\n        }\n    }\n]",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://127.0.0.1:8000/lyra/api/run/1/action/",
+									"protocol": "http",
+									"host": [
+										"127",
+										"0",
+										"0",
+										"1"
+									],
+									"port": "8000",
+									"path": [
+										"lyra",
+										"api",
+										"run",
+										"1",
+										"action",
+										""
+									]
+								}
+							},
+							"_postman_previewlanguage": null,
+							"header": null,
+							"cookie": [],
+							"body": null
+						},
+						{
+							"name": "GET Views By Topic ID",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "[\n    {\n        \"act_type\":\"views\",\n        \"data\": {\n            \"topic_id\": 1\n        }\n    }\n]",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://127.0.0.1:8000/lyra/api/run/1/action/",
+									"protocol": "http",
+									"host": [
+										"127",
+										"0",
+										"0",
+										"1"
+									],
+									"port": "8000",
+									"path": [
+										"lyra",
+										"api",
+										"run",
+										"1",
+										"action",
+										""
+									]
+								}
+							},
+							"_postman_previewlanguage": null,
+							"header": null,
+							"cookie": [],
+							"body": null
 						}
 					]
 				},
@@ -1037,7 +1116,7 @@
 								"header": [],
 								"body": {
 									"mode": "raw",
-									"raw": "[{\n    \"act_type\":\"npcs\",\n    \"data\": {\n        \"agents\": [\n        {\n            \"name\":\"Alice\",\n            \"views\":[\n                { \n                    \"ood\": 2, \"topic\": 1, \n                    \"attitude\": 0.7, \"opinion\": 0.8, \n                    \"uncertainty\": 0.2, \n                    \"public_compliance_thresh\": 0.6, \n                    \"private_acceptance_thresh\": 0.7 \n                }\n            ]\n        }\n    ]}\n}]",
+									"raw": "[{\n    \"act_type\":\"npcs\",\n    \"data\": {\n        \"agents\": [\n        {\n            \"name\":\"Alice\",\n            \"views\":[\n                { \n                    \"ood\": 2, \"topic\": 2, \n                    \"attitude\": 0.7, \"opinion\": 0.8, \n                    \"uncertainty\": 0.2, \n                    \"public_compliance_thresh\": 0.6, \n                    \"private_acceptance_thresh\": 0.7 \n                }\n            ]\n        }\n    ]}\n}]",
 									"options": {
 										"raw": {
 											"language": "json"
@@ -1076,7 +1155,7 @@
 								"header": [],
 								"body": {
 									"mode": "raw",
-									"raw": "[{\n    \"act_type\":\"start_discussion\",\n    \"data\": {\n        \"time_duration\": 5, \n        \"participants\": [53, 54, 56, 55],\n        \"ood\": 2, \n        \"topic\": 2\n    }\n}]",
+									"raw": "[{\n    \"act_type\":\"start_discussion\",\n    \"data\": {\n        \"time_duration\": 5, \n        \"participants\": [1,2,3,4],\n        \"ood\": 2\n    }\n}]",
 									"options": {
 										"raw": {
 											"language": "json"
@@ -1152,7 +1231,7 @@
 								"header": [],
 								"body": {
 									"mode": "raw",
-									"raw": "[{\n    \"act_type\":\"npcs\",\n    \"data\": {\n        \"agents\": [\n        {\n            \"agent_id\":1,\n            \"views\":[\n                { \n                    \"ood\": 1, \"topic\": 1, \n                    \"attitude\": 0.7, \"opinion\": 0.6, \n                    \"uncertainty\": 0.4, \n                    \"public_compliance_thresh\": 0.6, \n                    \"private_acceptance_thresh\": 0.7 \n                },\n                { \n                    \"ood\": 1, \"topic\": 2, \n                    \"attitude\": 1.0, \"opinion\": 1.0, \n                    \"uncertainty\": 0.9, \n                    \"public_compliance_thresh\": 0.6, \n                    \"private_acceptance_thresh\": 0.7 \n                }\n            ]\n        }\n    ]}\n}]",
+									"raw": "[{\n    \"act_type\":\"views\",\n    \"data\": {\n        \"agents\": [\n        {\n            \"agent_id\":8,\n            \"views\":[\n                { \n                    \"ood\": 2,\n                    \"attitude\": 0.2, \"opinion\": 0.9, \n                    \"uncertainty\": 0.4, \n                    \"public_compliance_thresh\": 0.6, \n                    \"private_acceptance_thresh\": 0.7 \n                }\n            ]\n        }\n    ]}\n}]",
 									"options": {
 										"raw": {
 											"language": "json"
@@ -1160,7 +1239,7 @@
 									}
 								},
 								"url": {
-									"raw": "http://127.0.0.1:8000/lyra/api/run/2/action/",
+									"raw": "http://127.0.0.1:8000/lyra/api/run/1/action/",
 									"protocol": "http",
 									"host": [
 										"127",
@@ -1173,7 +1252,7 @@
 										"lyra",
 										"api",
 										"run",
-										"2",
+										"1",
 										"action",
 										""
 									]
@@ -1472,44 +1551,7 @@
 					},
 					"response": [
 						{
-							"name": "http://127.0.0.1:8000/lyra/api/simulation/",
-							"originalRequest": {
-								"method": "GET",
-								"header": [],
-								"body": {
-									"mode": "raw",
-									"raw": "{}",
-									"options": {
-										"raw": {
-											"language": "json"
-										}
-									}
-								},
-								"url": {
-									"raw": "http://127.0.0.1:8000/lyra/api/simulation/",
-									"protocol": "http",
-									"host": [
-										"127",
-										"0",
-										"0",
-										"1"
-									],
-									"port": "8000",
-									"path": [
-										"lyra",
-										"api",
-										"simulation",
-										""
-									]
-								}
-							},
-							"_postman_previewlanguage": null,
-							"header": null,
-							"cookie": [],
-							"body": null
-						},
-						{
-							"name": "http://127.0.0.1:8000/lyra/api/simulation/",
+							"name": "Get Specific Simulation",
 							"originalRequest": {
 								"method": "GET",
 								"header": [],
